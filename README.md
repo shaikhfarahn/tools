@@ -1,1 +1,776 @@
 # tools
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced PDF Cropper</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.12.313/pdf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f8f9fa;
+            color: #333;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            padding: 25px;
+            border-radius: 10px;
+            box-shadow: 0 2px 15px rgba(0,0,0,0.1);
+        }
+        h1 {
+            text-align: center;
+            color: #2c3e50;
+            margin-bottom: 25px;
+        }
+        .upload-area {
+            border: 3px dashed #95a5a6;
+            padding: 40px;
+            text-align: center;
+            margin: 20px 0;
+            cursor: pointer;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+            background-color: #fdfdfd;
+        }
+        .upload-area:hover {
+            border-color: #3498db;
+            background-color: #f5f9fd;
+        }
+        .upload-area.active {
+            border-color: #2ecc71;
+            background-color: #f0faf5;
+        }
+        .preview-section {
+            display: none;
+            margin-top: 25px;
+            animation: fadeIn 0.5s ease;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        .pdf-container {
+            display: flex;
+            margin-top: 20px;
+            gap: 25px;
+        }
+        .pdf-viewer {
+            flex: 3;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            background-color: #f9f9f9;
+            min-height: 600px;
+        }
+        canvas {
+            max-width: 100%;
+            display: block;
+            margin: 0 auto;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .controls {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        button {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            padding: 12px 18px;
+            margin: 5px 0;
+            border-radius: 6px;
+            cursor: pointer;
+            width: 100%;
+            font-size: 16px;
+            font-weight: 500;
+            transition: all 0.2s ease;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        button:hover {
+            background-color: #2980b9;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+        }
+        button:active {
+            transform: translateY(0);
+        }
+        button.secondary {
+            background-color: #7f8c8d;
+        }
+        button.secondary:hover {
+            background-color: #6c7a7d;
+        }
+        button.danger {
+            background-color: #e74c3c;
+        }
+        button.danger:hover {
+            background-color: #c0392b;
+        }
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 30px;
+            background-color: rgba(255,255,255,0.9);
+            border-radius: 8px;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 100;
+        }
+        .spinner {
+            border: 5px solid #f3f3f3;
+            border-top: 5px solid #3498db;
+            border-radius: 50%;
+            width: 60px;
+            height: 60px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .crop-area {
+            position: absolute;
+            border: 2px dashed #e74c3c;
+            background-color: rgba(231, 76, 60, 0.15);
+            cursor: move;
+            box-shadow: 0 0 0 9999px rgba(0,0,0,0.4);
+        }
+        .resize-handle {
+            position: absolute;
+            width: 12px;
+            height: 12px;
+            background-color: #e74c3c;
+            bottom: -6px;
+            right: -6px;
+            cursor: nwse-resize;
+            border-radius: 50%;
+            border: 2px solid white;
+        }
+        .page-nav {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin: 15px 0;
+            background-color: #f1f5f9;
+            padding: 10px;
+            border-radius: 6px;
+        }
+        .page-nav span {
+            font-weight: 600;
+            color: #2c3e50;
+        }
+        .info-panel {
+            margin: 15px 0;
+            padding: 15px;
+            background: #f1f5f9;
+            border-radius: 8px;
+            border-left: 4px solid #3498db;
+        }
+        .info-panel h3 {
+            margin-top: 0;
+            color: #2c3e50;
+        }
+        #fileInfo {
+            margin-top: 15px;
+            color: #7f8c8d;
+            font-size: 14px;
+        }
+        #errorMessage {
+            color: #e74c3c;
+            margin-top: 10px;
+            font-weight: 500;
+        }
+        .page-selection {
+            margin: 20px 0;
+        }
+        .page-selection h3 {
+            margin-bottom: 10px;
+            color: #2c3e50;
+        }
+        .page-options {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        .page-options label {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            cursor: pointer;
+            padding: 8px 12px;
+            background-color: #ecf0f1;
+            border-radius: 4px;
+            transition: all 0.2s;
+        }
+        .page-options label:hover {
+            background-color: #dfe6e9;
+        }
+        .page-options input[type="radio"] {
+            margin: 0;
+        }
+        .custom-range {
+            display: none;
+            margin-top: 10px;
+        }
+        .custom-range input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .zoom-controls {
+            display: flex;
+            gap: 10px;
+            margin: 15px 0;
+        }
+        .zoom-controls button {
+            flex: 1;
+            padding: 8px;
+        }
+        .tooltip {
+            position: relative;
+            display: inline-block;
+        }
+        .tooltip .tooltiptext {
+            visibility: hidden;
+            width: 200px;
+            background-color: #2c3e50;
+            color: #fff;
+            text-align: center;
+            border-radius: 6px;
+            padding: 5px;
+            position: absolute;
+            z-index: 1;
+            bottom: 125%;
+            left: 50%;
+            transform: translateX(-50%);
+            opacity: 0;
+            transition: opacity 0.3s;
+            font-size: 12px;
+        }
+        .tooltip:hover .tooltiptext {
+            visibility: visible;
+            opacity: 1;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Advanced PDF Cropper</h1>
+        
+        <div class="upload-area" id="uploadArea">
+            <h2>Upload PDF File</h2>
+            <p>Drag & drop your PDF file here or click to browse</p>
+            <input type="file" id="fileInput" accept=".pdf" style="display: none;">
+            <div id="fileInfo"></div>
+            <div id="errorMessage"></div>
+        </div>
+        
+        <div class="preview-section" id="previewSection">
+            <div class="pdf-container">
+                <div class="pdf-viewer" id="pdfViewer">
+                    <canvas id="pdfCanvas"></canvas>
+                    <div class="crop-area" id="cropArea" style="display: none;">
+                        <div class="resize-handle" id="resizeHandle"></div>
+                    </div>
+                    <div class="loading" id="loading">
+                        <div class="spinner"></div>
+                        <p>Processing your PDF...</p>
+                    </div>
+                </div>
+                <div class="controls">
+                    <div class="info-panel" id="cropInfo">
+                        <h3>Crop Information</h3>
+                        <p>No crop area selected yet.</p>
+                    </div>
+                    
+                    <div class="page-selection">
+                        <h3>Pages to Crop</h3>
+                        <div class="page-options">
+                            <label>
+                                <input type="radio" name="pageRange" value="current" checked> Current
+                            </label>
+                            <label>
+                                <input type="radio" name="pageRange" value="all"> All
+                            </label>
+                            <label>
+                                <input type="radio" name="pageRange" value="custom"> Custom
+                            </label>
+                        </div>
+                        <div class="custom-range" id="customRangeContainer">
+                            <input type="text" id="customRange" placeholder="Example: 1-3,5,7-9">
+                        </div>
+                    </div>
+                    
+                    <div class="zoom-controls">
+                        <button id="zoomIn" class="secondary">Zoom In</button>
+                        <button id="zoomOut" class="secondary">Zoom Out</button>
+                        <button id="zoomReset" class="secondary">Reset Zoom</button>
+                    </div>
+                    
+                    <button id="cropBtn" class="tooltip">
+                        <span class="tooltiptext">Crop selected pages with current selection</span>
+                        Crop PDF
+                    </button>
+                    <button id="resetBtn" class="secondary">Reset Crop</button>
+                    
+                    <div class="page-nav">
+                        <button id="prevPage">← Previous</button>
+                        <span>Page <span id="currentPage">1</span> of <span id="totalPages">1</span></span>
+                        <button id="nextPage">Next →</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Set PDF.js worker path
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.12.313/pdf.worker.min.js';
+        
+        // Global variables
+        let pdfDoc = null,
+            pageNum = 1,
+            currentScale = 1.5,
+            canvas = document.getElementById('pdfCanvas'),
+            ctx = canvas.getContext('2d'),
+            currentFile = null,
+            cropBounds = null,
+            cropArea = document.getElementById('cropArea'),
+            currentViewport = null;
+
+        // Initialize event listeners
+        document.getElementById('uploadArea').addEventListener('click', () => {
+            document.getElementById('fileInput').click();
+        });
+        
+        document.getElementById('fileInput').addEventListener('change', handleFileSelect);
+        
+        // Page range selection
+        document.querySelectorAll('input[name="pageRange"]').forEach(radio => {
+            radio.addEventListener('change', function() {
+                document.getElementById('customRangeContainer').style.display = 
+                    this.value === 'custom' ? 'block' : 'none';
+            });
+        });
+
+        // Drag and drop functionality
+        const uploadArea = document.getElementById('uploadArea');
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('active');
+        });
+        
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('active');
+        });
+        
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('active');
+            
+            if (e.dataTransfer.files.length) {
+                document.getElementById('fileInput').files = e.dataTransfer.files;
+                handleFileSelect();
+            }
+        });
+
+        // Zoom controls
+        document.getElementById('zoomIn').addEventListener('click', function() {
+            currentScale = Math.min(currentScale + 0.25, 3);
+            if (pdfDoc) renderPage(pageNum);
+        });
+        
+        document.getElementById('zoomOut').addEventListener('click', function() {
+            currentScale = Math.max(currentScale - 0.25, 0.5);
+            if (pdfDoc) renderPage(pageNum);
+        });
+        
+        document.getElementById('zoomReset').addEventListener('click', function() {
+            currentScale = 1.5;
+            if (pdfDoc) renderPage(pageNum);
+        });
+
+        // Handle file selection
+        function handleFileSelect() {
+            clearError();
+            showFileInfo('Loading PDF...');
+            
+            const file = document.getElementById('fileInput').files[0];
+            if (!file) {
+                showError('No file selected');
+                return;
+            }
+
+            // Validate file type
+            if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+                showError('Please select a PDF file');
+                return;
+            }
+
+            currentFile = file;
+            showLoading(true);
+            showFileInfo(`Selected: ${file.name} (${formatFileSize(file.size)})`);
+            
+            const fileReader = new FileReader();
+            
+            fileReader.onload = function() {
+                try {
+                    const typedarray = new Uint8Array(this.result);
+                    
+                    // Load the PDF document
+                    pdfjsLib.getDocument(typedarray).promise.then(function(pdf) {
+                        pdfDoc = pdf;
+                        document.getElementById('totalPages').textContent = pdf.numPages;
+                        
+                        // Render the first page
+                        renderPage(pageNum).then(() => {
+                            showLoading(false);
+                            document.getElementById('previewSection').style.display = 'block';
+                            initCropArea();
+                            showFileInfo(`Loaded: ${file.name} (${pdf.numPages} pages)`);
+                        });
+                    }).catch(function(error) {
+                        console.error('PDF loading error:', error);
+                        showError('Error loading PDF. Please try another file.');
+                        showLoading(false);
+                    });
+                } catch (error) {
+                    console.error('File processing error:', error);
+                    showError('Error processing file');
+                    showLoading(false);
+                }
+            };
+            
+            fileReader.onerror = function() {
+                showError('Error reading file');
+                showLoading(false);
+            };
+            
+            fileReader.readAsArrayBuffer(file);
+        }
+        
+        // Render PDF page
+        async function renderPage(num) {
+            try {
+                const page = await pdfDoc.getPage(num);
+                const viewport = page.getViewport({ scale: currentScale });
+                currentViewport = viewport;
+                
+                canvas.height = viewport.height;
+                canvas.width = viewport.width;
+                
+                // Render PDF page into canvas context
+                await page.render({
+                    canvasContext: ctx,
+                    viewport: viewport
+                }).promise;
+                
+                document.getElementById('currentPage').textContent = num;
+                
+                return { page, viewport };
+            } catch (error) {
+                console.error('Page rendering error:', error);
+                showError('Error rendering PDF page');
+                throw error;
+            }
+        }
+
+        // Initialize crop area
+        function initCropArea() {
+            resetCropArea();
+            
+            // Set initial crop area (60% of canvas centered)
+            const initialWidth = Math.min(canvas.width * 0.6, canvas.width);
+            const initialHeight = Math.min(canvas.height * 0.6, canvas.height);
+            
+            const maxLeft = canvas.width - initialWidth;
+            const maxTop = canvas.height - initialHeight;
+            
+            cropArea.style.width = initialWidth + 'px';
+            cropArea.style.height = initialHeight + 'px';
+            cropArea.style.left = Math.max(0, Math.min(maxLeft, (canvas.width - initialWidth) / 2)) + 'px';
+            cropArea.style.top = Math.max(0, Math.min(maxTop, (canvas.height - initialHeight) / 2)) + 'px';
+            cropArea.style.display = 'block';
+            
+            // Update crop bounds
+            updateCropBounds();
+            
+            // Setup drag and resize
+            setupCropAreaInteractions();
+        }
+
+        // Setup crop area interactions
+        function setupCropAreaInteractions() {
+            let isDragging = false;
+            let isResizing = false;
+            let startX, startY, startLeft, startTop, startWidth, startHeight;
+            
+            // Mouse down on crop area
+            cropArea.addEventListener('mousedown', function(e) {
+                if (e.target === document.getElementById('resizeHandle')) {
+                    // Start resizing
+                    isResizing = true;
+                    startX = e.clientX;
+                    startY = e.clientY;
+                    startWidth = parseInt(cropArea.style.width);
+                    startHeight = parseInt(cropArea.style.height);
+                } else {
+                    // Start dragging
+                    isDragging = true;
+                    startX = e.clientX;
+                    startY = e.clientY;
+                    startLeft = parseInt(cropArea.style.left);
+                    startTop = parseInt(cropArea.style.top);
+                }
+                e.preventDefault();
+            });
+            
+            // Mouse move on document
+            document.addEventListener('mousemove', function(e) {
+                if (isDragging) {
+                    const dx = e.clientX - startX;
+                    const dy = e.clientY - startY;
+                    
+                    let newLeft = startLeft + dx;
+                    let newTop = startTop + dy;
+                    
+                    // Constrain to canvas
+                    newLeft = Math.max(0, Math.min(newLeft, canvas.width - parseInt(cropArea.style.width)));
+                    newTop = Math.max(0, Math.min(newTop, canvas.height - parseInt(cropArea.style.height)));
+                    
+                    cropArea.style.left = newLeft + 'px';
+                    cropArea.style.top = newTop + 'px';
+                    
+                    updateCropBounds();
+                } else if (isResizing) {
+                    const dx = e.clientX - startX;
+                    const dy = e.clientY - startY;
+                    
+                    let newWidth = startWidth + dx;
+                    let newHeight = startHeight + dy;
+                    
+                    // Constrain minimum size and to canvas
+                    newWidth = Math.max(50, Math.min(newWidth, canvas.width - parseInt(cropArea.style.left)));
+                    newHeight = Math.max(50, Math.min(newHeight, canvas.height - parseInt(cropArea.style.top)));
+                    
+                    cropArea.style.width = newWidth + 'px';
+                    cropArea.style.height = newHeight + 'px';
+                    
+                    updateCropBounds();
+                }
+            });
+            
+            // Mouse up
+            document.addEventListener('mouseup', function() {
+                isDragging = false;
+                isResizing = false;
+            });
+        }
+
+        // Update crop bounds information
+        function updateCropBounds() {
+            cropBounds = {
+                x: parseInt(cropArea.style.left),
+                y: parseInt(cropArea.style.top),
+                width: parseInt(cropArea.style.width),
+                height: parseInt(cropArea.style.height)
+            };
+            
+            document.getElementById('cropInfo').innerHTML = `
+                <h3>Crop Information</h3>
+                <p><strong>Position:</strong> X: ${cropBounds.x}px, Y: ${cropBounds.y}px</p>
+                <p><strong>Dimensions:</strong> ${cropBounds.width}px × ${cropBounds.height}px</p>
+                <p><strong>Page:</strong> ${pageNum} of ${pdfDoc.numPages}</p>
+            `;
+        }
+
+        // Page navigation
+        document.getElementById('prevPage').addEventListener('click', async function() {
+            if (pageNum <= 1) return;
+            pageNum--;
+            await renderPage(pageNum);
+            initCropArea();
+        });
+        
+        document.getElementById('nextPage').addEventListener('click', async function() {
+            if (pageNum >= pdfDoc.numPages) return;
+            pageNum++;
+            await renderPage(pageNum);
+            initCropArea();
+        });
+
+        // Reset button
+        document.getElementById('resetBtn').addEventListener('click', function() {
+            if (pdfDoc) {
+                initCropArea();
+            }
+        });
+
+        function resetCropArea() {
+            cropArea.style.display = 'none';
+            cropBounds = null;
+            document.getElementById('cropInfo').innerHTML = `
+                <h3>Crop Information</h3>
+                <p>No crop area selected yet.</p>
+            `;
+        }
+
+        // Crop button - with multi-page support
+        document.getElementById('cropBtn').addEventListener('click', async function() {
+            if (!pdfDoc || !currentFile || !cropBounds) {
+                showError('Please select a crop area first');
+                return;
+            }
+            
+            showLoading(true);
+            
+            try {
+                // Determine which pages to process
+                const rangeMode = document.querySelector('input[name="pageRange"]:checked').value;
+                let pagesToProcess = [];
+                
+                if (rangeMode === 'current') {
+                    pagesToProcess = [pageNum];
+                } else if (rangeMode === 'all') {
+                    for (let i = 1; i <= pdfDoc.numPages; i++) pagesToProcess.push(i);
+                } else if (rangeMode === 'custom') {
+                    const rangeText = document.getElementById('customRange').value;
+                    pagesToProcess = parsePageRange(rangeText, pdfDoc.numPages);
+                }
+                
+                if (pagesToProcess.length === 0) {
+                    showError('No valid pages selected');
+                    return;
+                }
+                
+                // Load the original PDF
+                const existingPdfBytes = await currentFile.arrayBuffer();
+                const pdfDocLib = await PDFLib.PDFDocument.load(existingPdfBytes);
+                
+                // Process each selected page
+                for (const pageNum of pagesToProcess) {
+                    try {
+                        // Get the page from pdf.js to get dimensions
+                        const pdfJsPage = await pdfDoc.getPage(pageNum);
+                        const viewport = pdfJsPage.getViewport({ scale: 1.0 });
+                        
+                        // Calculate scaling factors
+                        const scaleX = viewport.width / canvas.width;
+                        const scaleY = viewport.height / canvas.height;
+                        
+                        // Convert canvas coordinates to PDF coordinates
+                        const pdfX = cropBounds.x * scaleX;
+                        const pdfWidth = cropBounds.width * scaleX;
+                        
+                        // Note: PDF has origin at bottom-left, canvas at top-left
+                        const pdfY = viewport.height - (cropBounds.y * scaleY) - (cropBounds.height * scaleY);
+                        const pdfHeight = cropBounds.height * scaleY;
+                        
+                        // Get the page to crop (0-based index)
+                        const pageIndex = pageNum - 1;
+                        const page = pdfDocLib.getPages()[pageIndex];
+                        
+                        if (page) {
+                            // Set both CropBox and MediaBox to the same dimensions
+                            page.setCropBox(pdfX, pdfY, pdfWidth, pdfHeight);
+                            page.setMediaBox(pdfX, pdfY, pdfWidth, pdfHeight);
+                        }
+                    } catch (error) {
+                        console.error(`Error processing page ${pageNum}:`, error);
+                        continue;
+                    }
+                }
+                
+                // Save the cropped PDF
+                const croppedPdfBytes = await pdfDocLib.save();
+                
+                // Create a blob and download
+                const blob = new Blob([croppedPdfBytes], { type: 'application/pdf' });
+                saveAs(blob, `cropped_${currentFile.name}`);
+                
+            } catch (error) {
+                console.error('Cropping error:', error);
+                showError('Error cropping PDF. Please try again.');
+            } finally {
+                showLoading(false);
+            }
+        });
+
+        // Helper functions
+        function showFileInfo(message) {
+            document.getElementById('fileInfo').textContent = message;
+        }
+        
+        function clearError() {
+            document.getElementById('errorMessage').textContent = '';
+        }
+        
+        function showError(message) {
+            document.getElementById('errorMessage').textContent = message;
+        }
+        
+        function showLoading(show) {
+            document.getElementById('loading').style.display = show ? 'block' : 'none';
+        }
+        
+        function formatFileSize(bytes) {
+            if (bytes < 1024) return bytes + ' bytes';
+            else if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+            else return (bytes / 1048576).toFixed(1) + ' MB';
+        }
+        
+        // Parse page range string (e.g. "1-3,5,7-9")
+        function parsePageRange(rangeText, maxPages) {
+            if (!rangeText.trim()) return [];
+            
+            const result = new Set();
+            const parts = rangeText.split(',');
+            
+            for (const part of parts) {
+                const trimmed = part.trim();
+                if (!trimmed) continue;
+                
+                if (trimmed.includes('-')) {
+                    const [startStr, endStr] = trimmed.split('-').map(s => s.trim());
+                    const start = parseInt(startStr) || 1;
+                    const end = parseInt(endStr) || start;
+                    
+                    const realStart = Math.max(1, Math.min(start, maxPages));
+                    const realEnd = Math.max(1, Math.min(end, maxPages));
+                    
+                    const lower = Math.min(realStart, realEnd);
+                    const upper = Math.max(realStart, realEnd);
+                    
+                    for (let i = lower; i <= upper; i++) {
+                        result.add(i);
+                    }
+                } else {
+                    const num = parseInt(trimmed);
+                    if (!isNaN(num)) {
+                        const realNum = Math.max(1, Math.min(num, maxPages));
+                        result.add(realNum);
+                    }
+                }
+            }
+            
+            return Array.from(result).sort((a, b) => a - b);
+        }
+    </script>
+</body>
+</html>
